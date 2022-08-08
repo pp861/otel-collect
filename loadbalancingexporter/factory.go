@@ -32,7 +32,7 @@ const (
 	stability = component.StabilityLevelBeta
 
 	defaultEnableBatch   = false
-	defaultSendBatchSize = uint32(8192)
+	defaultSendBatchSize = 8192
 	defaultTimeout       = 200 * time.Millisecond
 )
 
@@ -58,9 +58,9 @@ func createDefaultConfig() config.Exporter {
 			OTLP: *otlpDefaultCfg,
 		},
 		Batch: Batch{
-			Enable: defaultEnableBatch,
-			Timeout: defaultTimeout
-			SendBatchSize: defaultSendBatchSize
+			Enable:        defaultEnableBatch,
+			Timeout:       defaultTimeout,
+			SendBatchSize: defaultSendBatchSize,
 		},
 	}
 }

@@ -1,0 +1,47 @@
+receivers:
+  tailtracer: #this line represents the ID of your receiver
+    interval: 1m
+    number_of_traces: 1
+  otlp:
+    protocols:
+      grpc:
+        endpoint: localhost:55680
+
+processors:
+
+exporters:
+  loadbalancing:
+    protocol:
+      otlp:
+        retry_on_failure:
+          enabled: false
+          # initial_interval: 2s
+          # max_interval: 4s
+          # max_elapsed_time: 10s
+        sending_queue:
+          enabled: false
+          queue_size: 50000
+          num_consumers: 1
+        timeout: 2s
+        tls:
+          insecure: true
+        # write_buffer_size 默认512K，够用
+    resolver:
+      static:
+        hostnames:
+          - 192.168.3.172:14251
+          - 192.168.3.172:14252
+  logging:
+    logLevel: debug
+  jaeger:
+    endpoint: localhost:14250
+    tls:
+      insecure: true
+      
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: []
+      exporters: [jaeger, logging]

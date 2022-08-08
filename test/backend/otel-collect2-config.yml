@@ -1,0 +1,77 @@
+receivers:
+  otlp/otel-collect2:
+    protocols:
+      grpc: 
+        endpoint: "otel-collect2:14252"
+
+exporters:
+  jaeger:
+    # jaeger2
+    endpoint: "jaeger:14250"
+    tls:
+      insecure: true
+    timeout: 2s
+    retry_on_failure:
+      enabled: false
+      # initial_interval: 10s
+      # max_interval: 60s
+      # max_elapsed_time: 10m
+    sending_queue:
+      enabled: true
+      queue_size: 50000
+      num_consumers: 10
+  logging:
+    loglevel: debug
+
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 1s
+  tail_sampling:
+    decision_wait: 5s
+    num_traces: 50000
+    expected_new_traces_per_sec: 10
+    policies:
+      [
+        {
+          name: latency-policy,
+          type: latency,
+          latency: {threshold_ms: 1000}
+        },
+        {
+          name: probabilistic-policy,
+          type: probabilistic,
+          probabilistic: {sampling_percentage: 100}  # TODO 测试全采
+        },
+        # {
+        #   name: status_code-policy,
+        #   type: status_code,
+        #   status_code: {status_codes: [ERROR]}
+        # },
+        # {
+        #   name: string_attribute-policy,
+        #   type: string_attribute,
+        #   string_attribute: {key: peer.service, values: [tracegen-server]}
+        # },
+      ]
+
+extensions:
+  health_check:
+  pprof:
+  zpages:
+
+service:
+  extensions: [health_check,pprof,zpages]
+  telemetry:
+    logs:
+      level: "info"
+      # output_paths: /tmp/collect2.log
+      # error_output_paths: /tmp/collect2_error.log
+    # metrics:
+    #   level: detailed
+    #   address: otel-collect2:8889
+  pipelines:
+    traces:
+      receivers: [otlp/otel-collect2]
+      processors: [tail_sampling, batch]
+      exporters: [logging, jaeger]

@@ -1,0 +1,1 @@
+CGO_ENABLED=0 go build -o otelcol "-ldflags=-s -w" -trimpath main.go components.go main_others.go

@@ -1,0 +1,53 @@
+receivers:
+  jaeger:
+    protocols:
+      thrift_compact:
+
+processors:
+  batch:
+
+extensions:
+  health_check:
+  pprof:
+    endpoint: ":1787"
+  zpages:
+    endpoint: ":55689"
+
+exporters:
+  logging:
+    loglevel: info
+  loadbalancing: 
+    protocol: 
+      otlp:
+        retry_on_failure: 
+          enabled: false
+          # initial_interval: 2s
+          # max_interval: 4s
+          # max_elapsed_time: 10s
+        sending_queue:
+          enabled: true
+          queue_size: 50000
+          num_consumers: 10
+        timeout: 2s
+        tls:
+          insecure: true
+        # write_buffer_size 默认512K，够用
+    resolver:
+      static:
+        hostnames:
+          - 192.168.56.101:14251
+          - 192.168.56.101:14252
+    batch: 
+      enable: true
+      timeout: 1s
+      send_batch_size: 15
+
+service:
+  extensions: [health_check,pprof,zpages]
+  pipelines:
+    traces:
+      receivers:
+      - jaeger
+      processors:
+      - batch
+      exporters: [logging, loadbalancing]

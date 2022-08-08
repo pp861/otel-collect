@@ -26,7 +26,6 @@ import (
 	"go.opencensus.io/tag"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
-	"go.opentelemetry.io/collector/config/configtelemetry"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter/otlpexporter"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -54,14 +53,13 @@ type traceExporterImp struct {
 	// add batch config
 	enableBatch   bool
 	batchTimeout  time.Duration
-	sendBatchSize uint32
+	sendBatchSize int
 
 	newTraceChan chan ptrace.Traces
 	shutdownChan chan struct{}
 
 	timer             *time.Timer
 	endpointBatchDict map[string]*batchTraces
-	exportCtx        context.Context
 }
 
 // Create new traces exporter
@@ -77,22 +75,16 @@ func newTracesExporter(params component.ExporterCreateSettings, cfg config.Expor
 	}
 
 	traceConfig := cfg.(*Config)
-	exportCtx, err := tag.New(context.Background(), tag.Insert(processorTagKey, cfg.ID().String()))
-	if err != nil {
-		return nil, err
-	}
-	
-	return &traceExporterImp{
-		loadBalancer:  lb,
-		logger: params.Logger,
 
-		enableBatch:   traceConfig.Batch.Enable,
-		batchTimeout:  traceConfig.Batch.Timeout,
-		sendBatchSize: traceConfig.Batch.SendBatchSize,
-		newTraceChan:  make(chan ptrace.Traces, runtime.NumCPU()),
-		shutdownChan:  make(chan struct{}, 1),
-		endpointBatchDict:  map[string]*batchTraces{}
-		exportCtx:      exportCtx,
+	return &traceExporterImp{
+		loadBalancer:      lb,
+		logger:            params.Logger,
+		enableBatch:       traceConfig.Batch.Enable,
+		batchTimeout:      traceConfig.Batch.Timeout,
+		sendBatchSize:     traceConfig.Batch.SendBatchSize,
+		newTraceChan:      make(chan ptrace.Traces, runtime.NumCPU()),
+		shutdownChan:      make(chan struct{}, 1),
+		endpointBatchDict: map[string]*batchTraces{},
 	}, nil
 }
 
@@ -112,7 +104,7 @@ func (e *traceExporterImp) Start(ctx context.Context, host component.Host) error
 		e.shutdownWg.Add(1)
 		go e.startProcessingCycle()
 	}
-	
+
 	return e.loadBalancer.Start(ctx, host)
 }
 
@@ -213,19 +205,15 @@ func (e *traceExporterImp) startProcessingCycle() {
 				}
 			}
 
-			sendAll()
+			e.sendAll()
 			return
 		case oneTrace := <-e.newTraceChan:
-			if oneTrace == nil {
-				continue
-			}
-			
 			err := e.processTrace(oneTrace)
 			if err != nil {
 				e.logger.Error("process one trace occur error", zap.Error(err))
 			}
 		case <-e.timer.C:
-			sendAll()
+			e.sendAll()
 			e.resetTimer()
 		}
 	}
@@ -242,8 +230,8 @@ func (e *traceExporterImp) resetTimer() {
 }
 
 type batchTraces struct {
-	traceData    ptrace.Traces
-	spanCount    int
+	traceData ptrace.Traces
+	spanCount int
 }
 
 func (e *traceExporterImp) processTrace(td ptrace.Traces) error {
@@ -267,14 +255,15 @@ func (e *traceExporterImp) processTrace(td ptrace.Traces) error {
 		}
 
 		batchTrace = e.endpointBatchDict[endpoint]
-	} 
+	}
 
 	batchTrace.spanCount += newSpanCount
+
 	td.ResourceSpans().MoveAndAppendTo(batchTrace.traceData.ResourceSpans())
 
 	// send trace
 	sent := false
-	err := nil
+	var err error = nil
 	if batchTrace.spanCount >= e.sendBatchSize {
 		sent = true
 		err = e.sendTraces(endpoint, batchTrace)
@@ -289,8 +278,8 @@ func (e *traceExporterImp) processTrace(td ptrace.Traces) error {
 }
 
 func (e *traceExporterImp) sendTraces(endpoint string, traces *batchTraces) error {
-	// if backend changed, maybe can not find endpoint or exporter
-	// if don't accept that, set batch enable fasle
+	// if backends changed, batched data will export to another backend
+	// if you don't accept that, do not use batch mode(with low throughput, because trace data will expose exactly one by one)
 	exp, err := e.loadBalancer.Exporter(endpoint)
 	if err != nil {
 		return err
@@ -302,7 +291,7 @@ func (e *traceExporterImp) sendTraces(endpoint string, traces *batchTraces) erro
 		return fmt.Errorf("expected %T but got %T", expectType, exp)
 	}
 
-	err = te.ConsumeTraces(e.exportCtx, traces.traceData)
+	err = te.ConsumeTraces(context.Background(), traces.traceData)
 	traces.traceData = ptrace.NewTraces()
 	traces.spanCount = 0
 
@@ -312,10 +301,10 @@ func (e *traceExporterImp) sendTraces(endpoint string, traces *batchTraces) erro
 // batch timeout or shutdown ,send all trace data
 func (e *traceExporterImp) sendAll() {
 	for endpoint, traces := range e.endpointBatchDict {
-		if traces.spanCount >= 0 {
+		if traces.spanCount > 0 {
 			err := e.sendTraces(endpoint, traces)
 			if err != nil {
-				e.logger.Error("send all trace data occur error", zap.String("endpoint", endpoint),  zap.Error(err))
+				e.logger.Error("send all trace data occur error", zap.String("endpoint", endpoint), zap.Error(err))
 			}
 		}
 	}

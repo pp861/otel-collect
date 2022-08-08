@@ -1,0 +1,51 @@
+version: '3.7'
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      # - "6831:6831/udp"
+      # jaeger后端采用tcp
+      - "14250:14250"
+      - "16686:16686"
+    networks:
+      - otel-collect
+
+  otel-collect1:
+    image: otel/opentelemetry-collector-contrib:0.56.0
+    command: ["--config=/etc/otel-collect1-config.yml"]
+    volumes:
+      - ./otel-collect1-config.yml:/etc/otel-collect1-config.yml
+    ports:
+      # - "1777:1777"   # pprof extension
+      # - "8888:8888"   # Prometheus metrics exposed by the collector
+      # - "8889"   # Prometheus exporter metrics
+      # - "13133:13133" # health_check extension
+      # - "4317"        # OTLP gRPC receiver
+      - "55679:55679" # zpages extension
+      - "14251:14251"
+      - "8889:8889"
+    networks:
+      - otel-collect
+    restart: on-failure
+    depends_on:
+      - jaeger
+
+  otel-collect2:
+    image: otel/opentelemetry-collector-contrib:0.56.0
+    command: ["--config=/etc/otel-collect2-config.yml"]
+    volumes:
+      - ./otel-collect2-config.yml:/etc/otel-collect2-config.yml
+    ports:
+      # - "1888"   # pprof extension
+      # - "8889:8889"   # Prometheus metrics exposed by the collector
+      # - "13133" # health_check extension
+      # - "55679:55679" # zpages extension
+      - "14252:14252"
+    networks:
+      - otel-collect
+    restart: on-failure
+    depends_on:
+      - jaeger
+
+networks:
+  otel-collect:

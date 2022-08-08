@@ -53,12 +53,12 @@ type DNSResolver struct {
 
 // Batch defines the configuration for the batch
 type Batch struct {
-	// Whether or not to enable batch(default not enabled).
+	// Whether or not enable batch(default not enabled).
 	Enable bool `mapstructure:"enable"`
 
 	// Timeout sets the time after which a batch will be sent regardless of size.
 	Timeout time.Duration `mapstructure:"timeout"`
 
 	// SendBatchSize is the size of a batch which after hit, will trigger it to be sent.
-	SendBatchSize uint32 `mapstructure:"send_batch_size"`
+	SendBatchSize int `mapstructure:"send_batch_size"`
 }

@@ -1,0 +1,33 @@
+version: '3'
+services:
+  otel-agent:
+    image: hyt/otel-collect:0.56
+    command: ["--config=/etc/config.yaml"]
+    volumes:
+      - ./config.yaml:/etc/config.yaml
+    ports:
+      - "6831:6831/udp"
+      # - "55679:55679" # zpages extension
+      - "8888:8888"
+      - "1777:1777"
+    networks:
+      - otel-agent
+    restart: on-failure
+
+  hotrod:
+    image: jaegertracing/example-hotrod:latest
+    ports: 
+      - "8080:8080"
+    command: ["all"]
+    environment:
+      - JAEGER_AGENT_HOST=192.168.56.101
+    #   # Note: if your application is using Node.js Jaeger Client, you need port 6832,
+    #   #       unless issue https://github.com/jaegertracing/jaeger/issues/1596 is resolved.
+      - JAEGER_AGENT_PORT=6831
+    networks:
+      - otel-agent
+    depends_on:
+      - otel-agent
+
+networks:
+  otel-agent:
